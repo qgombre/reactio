@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="ca">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Reactio — Entrenador de temps de reacció (WoW)</title>
+  <style>
+    :root{
+      --bg:#0b0f1a; --card:#121a2b; --muted:#7d8aa6; --ok:#38d39f; --fail:#ff6b6b; --accent:#60a5fa;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,'Helvetica Neue',Arial;
+      background:radial-gradient(1000px 700px at 80% -10%, #14213d 0%, #0b0f1a 60%);
+      color:#e6edf3; min-height:100dvh; display:flex; align-items:center; justify-content:center;
+    }
+    .wrap{width:min(1100px,95vw); display:grid; grid-template-columns: 1.2fr .8fr; gap:18px}
+    .card{
+      background:linear-gradient(180deg, rgba(255,255,255,.02), rgba(255,255,255,.01));
+      border:1px solid rgba(255,255,255,.06); border-radius:16px; box-shadow: 0 10px 30px rgba(0,0,0,.35);
+    }
+    header.card{grid-column:1/-1; padding:14px 16px; display:flex; align-items:center; gap:14px; justify-content:space-between}
+    header h1{margin:0; font-size:18px; font-weight:600; letter-spacing:.2px}
+    .hint{color:var(--muted); font-size:13px}
+    .area{padding:18px; display:flex; flex-direction:column; gap:14px}
+    .row{display:flex; align-items:center; gap:12px; flex-wrap:wrap}
+    .pill{padding:6px 10px; border:1px solid rgba(255,255,255,.08); border-radius:10px; font-size:12px; color:#b7c3d9}
+    .timer{font-variant-numeric:tabular-nums; font-size:28px; font-weight:700}
+    .status{font-weight:700}
+    .status.ok{color:var(--ok)} .status.fail{color:var(--fail)}
+    .playfield{
+      display:grid; place-items:center; height:360px; border-radius:12px; border:1px dashed rgba(255,255,255,.12);
+      background: rgba(255,255,255,.02);
+      user-select:none; -webkit-user-select:none; outline:none;
+    }
+    .ability{
+      text-align:center; display:flex; flex-direction:column; gap:10px; padding:18px 22px; border-radius:14px;
+      border:1px solid rgba(255,255,255,.12); background:rgba(18,26,43,.6); backdrop-filter: blur(4px);
+      box-shadow: 0 8px 24px rgba(0,0,0,.25);
+      animation: pop .16s ease-out;
+    }
+    @keyframes pop{from{transform:scale(.96); opacity:.5} to{transform:scale(1); opacity:1}}
+    .ability h2{margin:0; font-size:28px}
+    .ability .bind{color:var(--accent); font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;}
+    .controls{display:flex; gap:8px; flex-wrap:wrap}
+    button{
+      background:#1f2a44; border:1px solid rgba(255,255,255,.1); color:#fff; padding:10px 14px; border-radius:10px;
+      cursor:pointer; font-weight:600
+    }
+    button:disabled{opacity:.5; cursor:not-allowed}
+    table{width:100%; border-collapse:collapse; font-size:14px}
+    th,td{padding:8px 10px; border-bottom:1px solid rgba(255,255,255,.08)}
+    th{text-align:left; color:#c7d2e8}
+    .small{font-size:12px; color:var(--muted)}
+    .kbd{font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; background:#1b2336; border:1px solid rgba(255,255,255,.08); padding:2px 6px; border-radius:6px}
+  </style>
+</head>
+<body>
+  <div class="wrap" aria-live="polite">
+    <!-- Capçalera -->
+    <header class="card">
+      <div>
+        <h1>Reactio — Entrenador WoW</h1>
+        <div class="hint">Prem la tecla correcta o el clic indicat. Cada intent tanca la ronda i n'apareix una altra a 0,5s.</div>
+      </div>
+      <div class="row">
+        <div class="pill"><span class="small">Durada</span> <strong>60s</strong></div>
+        <div class="pill"><span class="small">Inter-stímul</span> <strong>500ms</strong></div>
+        <div class="pill"><span class="small">Layout</span> <strong>e.code</strong></div>
+      </div>
+    </header>
+
+    <!-- Zona de joc -->
+    <section class="card area" aria-label="Zona de joc">
+      <div class="row" style="justify-content:space-between;">
+        <div class="row">
+          <div class="pill">Temps: <span id="time" class="timer">60.0</span></div>
+          <div class="pill">OK: <strong id="okCount">0</strong></div>
+          <div class="pill">FAIL: <strong id="failCount">0</strong></div>
+          <div class="pill">Darrer: <span id="lastStatus" class="status">—</span> <span id="lastMs" class="small"></span></div>
+        </div>
+        <div class="controls">
+          <button id="btnStart">Inicia (espai)</button>
+          <button id="btnStop" disabled>Acaba</button>
+          <button id="btnReset">Reinicia</button>
+        </div>
+      </div>
+
+      <div id="playfield" class="playfield" tabindex="0" aria-label="Camp de reacció">
+        <div class="small">Prem <span class="kbd">Espai</span> per començar. La finestreta capturarà teclat + clic.</div>
+      </div>
+
+      <details>
+        <summary><strong>Mapa d'habilitats i tecles</strong></summary>
+        <div class="row" style="margin-top:10px; gap:10px">
+          <span class="pill">Conflagrar → <span class="kbd">1</span></span>
+          <span class="pill">Descarga de Caos → <span class="kbd">2</span></span>
+          <span class="pill">Incinerar → <span class="kbd">E</span></span>
+          <span class="pill">Llama vil → <span class="kbd">X</span></span>
+          <span class="pill">Estragos → <span class="kbd">Clic de rodeta</span></span>
+          <span class="pill">Inmolar → <span class="kbd">F</span></span>
+          <span class="pill">Lluvia de fuego → <span class="kbd">Q</span></span>
+          <span class="pill">Quemadura de las sombras → <span class="kbd">R</span></span>
+          <span class="pill">Defensius → <span class="kbd">-</span></span>
+          <span class="pill">Potis → <span class="kbd">+</span></span>
+          <span class="pill">Sinapsis → <span class="kbd">ALT+X</span></span>
+          <span class="pill">Alma oscura → <span class="kbd">ALT+E</span></span>
+          <span class="pill">Pompa → <span class="kbd">ALT+-</span></span>
+          <span class="pill">Furia de las sombras → <span class="kbd">ALT+Q</span></span>
+        </div>
+        <p class="small">Es fa servir <code>KeyboardEvent.code</code> (p.ex. <em>Digit1</em>, <em>KeyE</em>, <em>Minus</em>, <em>Equal</em>) per evitar problemes de layout. Als combos amb ALT es bloqueja el comportament per defecte.</p>
+      </details>
+    </section>
+
+    <!-- Resum -->
+    <aside class="card area" aria-label="Resum final">
+      <h3 style="margin:0 0 6px 0">Resum</h3>
+      <div class="small">Mitjana de temps per habilitat (només intents encertats) i precisió global.</div>
+      <table id="summaryTable" aria-describedby="Taula de resum">
+        <thead>
+          <tr><th>Habilitat</th><th>Intents</th><th>OK</th><th>FAIL</th><th>Avg OK (ms)</th></tr>
+        </thead>
+        <tbody></tbody>
+        <tfoot>
+          <tr>
+            <th>Total</th>
+            <th id="sumAttempts">0</th>
+            <th id="sumOk">0</th>
+            <th id="sumFail">0</th>
+            <th id="sumAcc">0% OK</th>
+          </tr>
+        </tfoot>
+      </table>
+    </aside>
+  </div>
+
+  <script>
+    // =========================
+    // Reactio — Lògica principal
+    // =========================
+
+    // Definició d'habilitats (validadors basats en e.code / mouse)
+    const ABILITIES = [
+      { id:'conflagrar',         name:'Conflagrar',               type:'key',  match:(e)=>e.code==='Digit1' && !e.altKey, bind:'1' },
+      { id:'caos',               name:'Descarga de Caos',         type:'key',  match:(e)=>e.code==='Digit2' && !e.altKey, bind:'2' },
+      { id:'incinerar',          name:'Incinerar',                type:'key',  match:(e)=>e.code==='KeyE'   && !e.altKey, bind:'E' },
+      { id:'llama_vil',          name:'Llama vil',                type:'key',  match:(e)=>e.code==='KeyX'   && !e.altKey, bind:'X' },
+      { id:'estragos',           name:'Estragos',                 type:'mouse',match:(m)=>m.button===1,                bind:'Clic de rodeta' },
+      { id:'inmolar',            name:'Inmolar',                  type:'key',  match:(e)=>e.code==='KeyF'   && !e.altKey, bind:'F' },
+      { id:'lluvia',             name:'Lluvia de fuego',          type:'key',  match:(e)=>e.code==='KeyQ'   && !e.altKey, bind:'Q' },
+      { id:'quemadura',          name:'Quemadura de las sombras', type:'key',  match:(e)=>e.code==='KeyR'   && !e.altKey, bind:'R' },
+      { id:'defensius',          name:'Defensius',                type:'key',  match:(e)=>e.code==='Minus'  && !e.altKey, bind:'-' },
+      { id:'potis',              name:'Potis',                    type:'key',  match:(e)=>e.code==='Equal'  && !e.altKey, bind:'+' },
+      { id:'sinapsis',           name:'Sinapsis',                 type:'key',  match:(e)=>e.code==='KeyX'   && e.altKey,  bind:'ALT+X' },
+      { id:'alma_oscura',        name:'Alma oscura',              type:'key',  match:(e)=>e.code==='KeyE'   && e.altKey,  bind:'ALT+E' },
+      { id:'pompa',              name:'Pompa',                    type:'key',  match:(e)=>e.code==='Minus'  && e.altKey,  bind:'ALT+-' },
+      { id:'furia_sombras',      name:'Furia de las sombras',     type:'key',  match:(e)=>e.code==='KeyQ'   && e.altKey,  bind:'ALT+Q' },
+    ];
+
+    // Estat global del test
+    const state = {
+      running:false,
+      timeLeft:60.0,
+      current:null,           // {ability, shownAt}
+      lockInput:false,        // bloq durant la finestra intermèdia (0.5s)
+      timerId:null,           // interval de 100ms per compte enrere
+      nextTimeout:null,       // timeout per mostrar següent
+      stats:new Map()         // id -> {attempts, ok, fail, okTimes:[]}
+    };
+
+    // Elements UI
+    const $playfield = document.getElementById('playfield');
+    const $time = document.getElementById('time');
+    const $ok = document.getElementById('okCount');
+    const $fail = document.getElementById('failCount');
+    const $lastStatus = document.getElementById('lastStatus');
+    const $lastMs = document.getElementById('lastMs');
+    const $btnStart = document.getElementById('btnStart');
+    const $btnStop = document.getElementById('btnStop');
+    const $btnReset = document.getElementById('btnReset');
+    const $summaryBody = document.querySelector('#summaryTable tbody');
+    const $sumAttempts = document.getElementById('sumAttempts');
+    const $sumOk = document.getElementById('sumOk');
+    const $sumFail = document.getElementById('sumFail');
+    const $sumAcc = document.getElementById('sumAcc');
+
+    // Utils
+    const rnd = (max)=>Math.floor(Math.random()*max);
+    const now = ()=>performance.now();
+
+    function resetStats(){
+      state.stats.clear();
+      ABILITIES.forEach(a=>state.stats.set(a.id,{attempts:0, ok:0, fail:0, okTimes:[]}));
+      updateSummary();
+      $ok.textContent='0'; $fail.textContent='0';
+      $lastStatus.textContent='—'; $lastStatus.className='status'; $lastMs.textContent='';
+    }
+
+    function updateSummary(){
+      let totAtt=0, totOk=0, totFail=0;
+      $summaryBody.innerHTML='';
+      for(const a of ABILITIES){
+        const s = state.stats.get(a.id);
+        totAtt += s.attempts; totOk += s.ok; totFail += s.fail;
+        const avg = s.okTimes.length ? Math.round(s.okTimes.reduce((p,c)=>p+c,0)/s.okTimes.length) : '—';
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${a.name}</td><td>${s.attempts}</td><td>${s.ok}</td><td>${s.fail}</td><td>${avg}</td>`;
+        $summaryBody.appendChild(tr);
+      }
+      $sumAttempts.textContent=totAtt;
+      $sumOk.textContent=totOk;
+      $sumFail.textContent=totFail;
+      const acc = totAtt? Math.round((totOk/totAtt)*100):0;
+      $sumAcc.textContent=`${acc}% OK`;
+    }
+
+    function showAbility(){
+      if(!state.running) return;
+      state.lockInput=false;
+      const ability = ABILITIES[rnd(ABILITIES.length)];
+      state.current = { ability, shownAt: now() };
+
+      $playfield.innerHTML = `
+        <div class="ability" role="status" aria-live="assertive">
+          <h2>${ability.name}</h2>
+          <div>Prem: <span class="bind kbd">${ability.bind}</span></div>
+        </div>
+      `;
+    }
+
+    function closeAbility(result, ms){
+      // Oculta estímul i mostra feedback en darrer estat
+      $playfield.innerHTML = `<div class="small">Esperant següent…</div>`;
+      $lastStatus.textContent = result?'OK':'FAIL';
+      $lastStatus.className = 'status ' + (result?'ok':'fail');
+      $lastMs.textContent = ms? `(${ms} ms)` : '';
+
+      // Finestra intermèdia de 0.5s
+      state.lockInput = true;
+      state.nextTimeout = setTimeout(()=>{
+        state.lockInput = false;
+        state.current = null;
+        showAbility();
+      }, 500);
+    }
+
+    function handleAttempt(isMatch){
+      if(!state.running || !state.current) return;
+      const a = state.current.ability;
+      const s = state.stats.get(a.id);
+      s.attempts += 1;
+
+      // Temps de reacció
+      const reactMs = Math.max(0, Math.round(now() - state.current.shownAt));
+      if(isMatch){
+        s.ok += 1;
+        s.okTimes.push(reactMs);
+        $ok.textContent = String(Number($ok.textContent)+1);
+      }else{
+        s.fail += 1;
+        $fail.textContent = String(Number($fail.textContent)+1);
+      }
+      updateSummary();
+      closeAbility(isMatch, reactMs);
+    }
+
+    // Gestió de teclat — IMPORTANT: evitar efectes amb ALT (navegador i Electron)
+    function keydownHandler(e){
+      // Evita repetició quan es manté premut
+      if(e.repeat) return;
+
+      // Start ràpid amb espai
+      if(!state.running && (e.code==='Space')){
+        e.preventDefault();
+        start();
+        return;
+      }
+
+      // Bloqueig durant finestra intermèdia o si no hi ha estímul
+      if(state.lockInput || !state.current) return;
+
+      // Si el combo està en el nostre set, prevenim per defecte (evitar menús/acceleradors)
+      const isCandidate = (
+        e.code==='KeyX' || e.code==='KeyE' || e.code==='KeyQ' || e.code==='Minus' || e.code==='Digit1' ||
+        e.code==='Digit2' || e.code==='KeyF' || e.code==='KeyR' || e.code==='Equal'
+      );
+      if(isCandidate) e.preventDefault();
+
+      // Avalua match
+      const isMatch = state.current.ability.type==='key' && state.current.ability.match(e);
+      handleAttempt(!!isMatch);
+    }
+
+    // Gestió de mouse per a "Estragos" (clic de rodeta / middle button)
+    function mouseHandler(e){
+      if(state.lockInput || !state.current) return;
+      // Evita scroll en middle click i altres efectes
+      if(e.type==='auxclick' || e.type==='mousedown'){
+        if(e.button===1) e.preventDefault();
+      }
+      const isMatch = state.current.ability.type==='mouse' && state.current.ability.match(e);
+      handleAttempt(!!isMatch);
+    }
+
+    // Bucle del compte enrere (100ms resolució)
+    function tick(){
+      state.timeLeft = Math.max(0, +(state.timeLeft - 0.1).toFixed(1));
+      $time.textContent = state.timeLeft.toFixed(1);
+      if(state.timeLeft<=0){
+        finish();
+      }
+    }
+
+    function start(){
+      if(state.running) return;
+      state.running = true;
+      $btnStart.disabled = true;
+      $btnStop.disabled = false;
+      $playfield.focus({preventScroll:true});
+
+      // Inicia temps
+      state.timeLeft = 60.0;
+      $time.textContent = state.timeLeft.toFixed(1);
+      clearInterval(state.timerId);
+      state.timerId = setInterval(tick,100);
+
+      // Mostra primer estímul
+      clearTimeout(state.nextTimeout);
+      showAbility();
+    }
+
+    function finish(){
+      if(!state.running) return;
+      state.running = false;
+      clearInterval(state.timerId);
+      clearTimeout(state.nextTimeout);
+      state.timerId = null; state.nextTimeout = null;
+      state.current = null; state.lockInput = false;
+      $btnStart.disabled = false;
+      $btnStop.disabled = true;
+      $playfield.innerHTML = `<div class="ability"><h2>Fi del test</h2><div class="small">Revisa el resum a la dreta o reinicia per repetir.</div></div>`;
+    }
+
+    function stop(){
+      finish();
+    }
+
+    function reset(){
+      finish();
+      $time.textContent='60.0';
+      resetStats();
+      $playfield.innerHTML = `<div class="small">Prem <span class="kbd">Espai</span> per començar. La finestreta capturarà teclat + clic.</div>`;
+    }
+
+    // Listeners
+    window.addEventListener('keydown', keydownHandler, {passive:false});
+    // Captura middle click com a 'auxclick' (estàndard) i fallback 'mousedown'
+    $playfield.addEventListener('auxclick', mouseHandler, {passive:false});
+    $playfield.addEventListener('mousedown', mouseHandler, {passive:false});
+
+    // Botons
+    $btnStart.addEventListener('click', start);
+    $btnStop.addEventListener('click', stop);
+    $btnReset.addEventListener('click', reset);
+
+    // Inicialitza estat
+    resetStats();
+
+    // Evita que ALT en si mateix provoqui menús del navegador (on es pugui)
+    // Nota: en alguns navegadors no es pot anul·lar totalment, però a Electron sí (vegeu main.js).
+    window.addEventListener('keydown', (e)=>{
+      if(e.altKey){
+        const codes = new Set(['KeyX','KeyE','KeyQ','Minus']);
+        if(codes.has(e.code)) e.preventDefault();
+      }
+    }, {capture:true, passive:false});
+  </script>
+</body>
+</html>

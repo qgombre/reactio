@@ -1,0 +1,14 @@
+{
+  "name": "reactio",
+  "version": "1.0.0",
+  "description": "Reactio — Entrenador de temps de reacció per World of Warcraft. Funciona en navegador i Electron.",
+  "main": "main.js",
+  "author": "Joan Garcia",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron ."
+  },
+  "devDependencies": {
+    "electron": "^31.7.7"
+  }
+}
